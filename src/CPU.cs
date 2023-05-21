@@ -16,6 +16,8 @@ public class CPU {
     Instruction nextInstruction;
     UInt32 sr;
     NextLoad load;
+    UInt32 hi;
+    UInt32 lo;
     int count = 0;
 
     public CPU() {
@@ -34,6 +36,9 @@ public class CPU {
         this.sr = 0x0;
 
         this.load = new NextLoad(0, 0);
+
+        this.hi = 0xEE00EE00;
+        this.lo = 0xEE00EE00;
     }
 
     public UInt32 getReg(UInt32 index) => reg[index];
@@ -82,12 +87,20 @@ public class CPU {
                 switch (instruction.funct()) {
                     case 0x00:
                         op_sll(instruction); break;
+                    case 0x02:
+                        op_srl(instruction); break;
                     case 0x03:
                         op_sra(instruction); break;
                     case 0x08:
                         op_jr(instruction); break;
                     case 0x09:
                         op_jalr(instruction); break;
+                    case 0x12:
+                        op_mflo(instruction); break;
+                    case 0x1A:
+                        op_div(instruction); break;
+                    case 0x1B:
+                        op_divu(instruction); break;
                     case 0x25:
                         op_or(instruction); break;
                     case 0x2B:
@@ -118,6 +131,8 @@ public class CPU {
                 op_addiu(instruction); break;
             case 0x0A:
                 op_slti(instruction); break;
+            case 0x0B:
+                op_sltiu(instruction); break;
             case 0x0C:
                 op_andi(instruction); break;
             case 0x0F:
@@ -186,6 +201,65 @@ public class CPU {
     }
 
     // opcodes
+    private void op_srl(Instruction instruction) {
+        UInt32 shamt = instruction.shamt();
+        UInt32 rt = instruction.rt();
+        UInt32 rd = instruction.rd();
+
+        UInt32 val = getReg(rt) >> (int)shamt;
+
+        setReg(rd, val);
+    }
+
+    private void op_mflo(Instruction instruction) {
+        UInt32 rd = instruction.rd();
+        setReg(rd, lo);
+    }
+
+    private void op_divu(Instruction instruction) {
+        UInt32 rs = instruction.rs();
+        UInt32 rt = instruction.rt();
+
+        UInt32 num = getReg(rs);
+        UInt32 denom = getReg(rt);
+
+        if (denom == 0) {
+            hi = num;
+            lo = 0xFFFFFFFF;
+        } else {
+            hi = num % denom;
+            lo = num / denom;
+        }
+    }
+
+    private void op_div(Instruction instruction) {
+        UInt32 rs = instruction.rs();
+        UInt32 rt = instruction.rt();
+
+        Int32 num = (Int32)getReg(rs);
+        Int32 denom = (Int32)getReg(rt);
+
+        if (denom == 0) {
+            hi = (UInt32)num;
+
+            if (num >= 0) {
+                lo = 0xFFFFFFFF;
+            } else {
+                lo = 0x1;
+            }
+
+            return;
+        }
+
+        if (((UInt32)num == 0x80000000) && denom == -1) {
+            hi = 0x0;
+            lo = 0x80000000;
+        } else {
+            hi = (UInt32)(num % denom);
+            lo = (UInt32)(num / denom);
+        }
+    }
+
     private void op_sra(Instruction instruction) {
         UInt32 i = instruction.shamt();
         UInt32 rt = instruction.rt();
@@ -222,6 +296,20 @@ public class CPU {
 
             branch(i);
         }
+    }
+
+    private void op_sltiu(Instruction instruction) {
+        UInt32 i = instruction.imm_se();
+        UInt32 rt = instruction.rt();
+        UInt32 rs = instruction.rs();
+
+        UInt32 val = 0;
+
+        if (getReg(rs) < i) {
+            val = 1;
+        } 
+
+        setReg(rt, val);
     }
 
     private void op_slti(Instruction instruction) {
