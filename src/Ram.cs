@@ -7,6 +7,8 @@ public class Ram {
         Array.Fill<byte>(this.ram, 0x00FB);
     }
 
+    public byte load8(UInt32 offset) => ram[offset];
+
     public UInt32 load32(UInt32 offset) {
         Console.WriteLine("{0:x}", offset);
 
@@ -17,6 +19,8 @@ public class Ram {
 
         return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
     }
+
+    public void store8(UInt32 offset, byte val) => ram[offset] = val;
 
     public void store32(UInt32 offset, UInt32 val) {
         byte b0 = (byte)(val & 0xFF);

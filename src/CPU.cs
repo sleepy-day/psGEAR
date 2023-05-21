@@ -16,6 +16,7 @@ public class CPU {
     Instruction nextInstruction;
     UInt32 sr;
     NextLoad load;
+    int count = 0;
 
     public CPU() {
         this.pc = 0xbfc00000;
@@ -38,6 +39,8 @@ public class CPU {
     public UInt32 getReg(UInt32 index) => reg[index];
 
     public void setReg(UInt32 index, UInt32 value) {
+        Console.WriteLine($"Writing register value {value} to index {index}");
+
         outReg[index] = value;
 
         // Set register 0 to always be 0
@@ -63,11 +66,24 @@ public class CPU {
     public void decodeAndExecute(Instruction instruction) {
         Console.WriteLine($"Instruction: {instruction.primary():X} Whole opcode: {instruction.opcode:X}");
 
+        if (instruction.opcode == 0) {
+            count++;
+        } else {
+            count = 0;
+        }
+
+        if (count >= 50) {
+            throw new Exception("repeated empty opcodes");
+        }
+
         switch (instruction.primary()) {
             case 0x00:
+                Console.WriteLine($"funct: {instruction.funct():X}");
                 switch (instruction.funct()) {
                     case 0x00:
                         op_sll(instruction); break;
+                    case 0x08:
+                        op_jr(instruction); break;
                     case 0x25:
                         op_or(instruction); break;
                     case 0x2B:
@@ -80,6 +96,8 @@ public class CPU {
                 } break;
             case 0x03:
                 op_jal(instruction); break;
+            case 0x04:
+                op_beq(instruction); break;
             case 0x09:
                 op_addiu(instruction); break;
             case 0x0C:
@@ -98,6 +116,8 @@ public class CPU {
                 op_bne(instruction); break;
             case 0x08:
                 op_addi(instruction); break;
+            case 0x20:
+                op_lb(instruction); break;
             case 0x23:
                 op_lw(instruction); break;
             case 0x28:
@@ -121,6 +141,10 @@ public class CPU {
         }
     }
 
+    private byte load8(UInt32 addr) {
+        return hub.load8(addr);
+    }
+
     private void store8(UInt32 addr, byte val) {
         hub.store8(addr, val);
     }
@@ -140,10 +164,29 @@ public class CPU {
     }
 
     // opcodes
+    private void op_beq(Instruction instruction) {
+        UInt32 i = instruction.imm_se();
+        UInt32 rs = instruction.rs();
+        UInt32 rt = instruction.rt();
+
+        if (getReg(rs) == getReg(rt)) {
+            branch(i);
+        }
+    }
+
     private void op_jal(Instruction instruction) {
         UInt32 ra = pc;
+        Console.WriteLine($"jal PC: {pc:X}");
         setReg(31, ra);
+        Console.WriteLine($"reg 31: {getReg(31):X}");
         op_j(instruction);
+    }
+
+    private void op_jr(Instruction instruction) {
+        UInt32 rs = instruction.rs();
+        Console.WriteLine(rs);
+        Console.WriteLine($"jr setting pc to: {getReg(rs):X}");
+        pc = getReg(rs);
     }
 
     private void op_addu(Instruction instruction) {
@@ -185,6 +228,18 @@ public class CPU {
         setReg(rt, val);
     }
 
+    private void op_lb(Instruction instruction) {
+        UInt32 i = instruction.imm_se();
+        UInt32 rt = instruction.rt();
+        UInt32 rs = instruction.rs();
+
+        UInt32 addr = getReg(rs) + i;
+
+        UInt32 val = load8(addr);
+
+        load = new NextLoad(rt, val);
+    }
+
     private void op_sb(Instruction instruction) {
         if ((sr & 0x10000) != 0) {
             Console.WriteLine("Ignoring store, cache is isolated");
@@ -198,7 +253,7 @@ public class CPU {
         UInt32 addr = getReg(rs) + i;
         UInt32 val = getReg(rt);
 
-
+        store8(addr, (byte)(val & 0xFF));
     }
 
     private void op_sw(Instruction instruction) {

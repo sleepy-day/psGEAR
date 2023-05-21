@@ -7,6 +7,7 @@ public class Hub {
     readonly UInt32[] MEM_CONTROL = new UInt32[]{ 0x1F801000, 36 };
     readonly UInt32[] SPU = new UInt32[]{ 0x1F801C00, 640 };
     readonly UInt32[] EXPANSION_2 = new UInt32[]{ 0x1F802000, 66 };
+    readonly UInt32[] EXPANSION_1 = new UInt32[]{ 0x1F000000, 8 * 1024 * 1024 };
     readonly UInt32[] REGION_MASK = new UInt32[]{
         // KUSEG: 2048MB
         0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
@@ -45,19 +46,38 @@ public class Hub {
         return (addr, false);
     }
 
-    public UInt32 load32(UInt32 addr) {
-        UInt32 opcode = 0;
-
+    public byte load8(UInt32 addr) {
         var c = contains(addr, BIOS);
         if (c.result) {
-            opcode = bios.load32(c.offset);
+            return bios.load8(c.offset);
         }
 
-        if (!c.result) {
-            Console.WriteLine($"load32 at address: {addr:X}");
+        c = contains(addr, EXPANSION_1);
+        if (c.result) {
+            // expansion slot 1, currently not implemented
+            return 0xFF;
         }
 
-        return opcode;
+        c = contains(addr, RAM);
+        if (c.result) {
+            return ram.load8(c.offset);
+        }
+
+        throw new Exception($"Unhandled load8 at address: {addr:X}");
+    }
+
+    public UInt32 load32(UInt32 addr) {
+        var c = contains(addr, BIOS);
+        if (c.result) {
+            return bios.load32(c.offset);
+        }
+
+        c = contains(addr, RAM);
+        if (c.result) {
+            return ram.load32(c.offset);
+        }
+
+        throw new Exception($"Unhandled load32 at address: {addr:X}");
     }
 
     public void store8(UInt32 addr, byte val) {
@@ -65,6 +85,11 @@ public class Hub {
         if (c.result) {
             Console.WriteLine("Write to expansion 2 reg");
             return;
+        }
+
+        c = contains(addr, RAM);
+        if (c.result) {
+            ram.store8(c.offset, val);
         }
 
         throw new Exception($"Unhandled store8 into address {addr:X}");

@@ -24,6 +24,10 @@ public class Bios {
         return 0xFFFFFFFF;
     }
 
+    public byte load8(UInt32 offset) {
+        return this.data[offset];
+    }
+
     public UInt32 load32(UInt32 offset) {
         Console.WriteLine("{0:x}", offset);
 
