@@ -82,24 +82,42 @@ public class CPU {
                 switch (instruction.funct()) {
                     case 0x00:
                         op_sll(instruction); break;
+                    case 0x03:
+                        op_sra(instruction); break;
                     case 0x08:
                         op_jr(instruction); break;
+                    case 0x09:
+                        op_jalr(instruction); break;
                     case 0x25:
                         op_or(instruction); break;
                     case 0x2B:
                         op_sltu(instruction); break;
                     case 0x21:
                         op_addu(instruction); break;
+                    case 0x23:
+                        op_subu(instruction); break;
+                    case 0x24:
+                        op_and(instruction); break;
+                    case 0x20:
+                        op_add(instruction); break;
                     default:
                         Console.WriteLine($"Unhandled funct instruction: {instruction.funct():X} {instruction.opcode:X}");
                         throw new Exception("Terminating due to unhandled instruction.");
                 } break;
+            case 0x01:
+                op_bcondz(instruction); break;
             case 0x03:
                 op_jal(instruction); break;
             case 0x04:
                 op_beq(instruction); break;
+            case 0x06:
+                op_blez(instruction); break;
+            case 0x07:
+                op_bgtz(instruction); break;
             case 0x09:
                 op_addiu(instruction); break;
+            case 0x0A:
+                op_slti(instruction); break;
             case 0x0C:
                 op_andi(instruction); break;
             case 0x0F:
@@ -124,6 +142,8 @@ public class CPU {
                 op_sb(instruction); break;
             case 0x29:
                 op_sh(instruction); break;
+            case 0x24:
+                op_lbu(instruction); break;
             default:
                 Console.WriteLine($"Unhandled primary instruction: {instruction.primary():X} {instruction.opcode:X}");
                 throw new Exception("Terminating due to unhandled instruction.");
@@ -134,6 +154,8 @@ public class CPU {
         Console.WriteLine($"COP0 Instruction: {instruction.rs():X} Whole opcode: {instruction.opcode:X}");
 
         switch (instruction.rs()) {
+            case 0x00:
+                op_mfc0(instruction); break;
             case 0x04:
                 op_mtc0(instruction); break;
             default:
@@ -164,6 +186,97 @@ public class CPU {
     }
 
     // opcodes
+    private void op_sra(Instruction instruction) {
+        UInt32 i = instruction.shamt();
+        UInt32 rt = instruction.rt();
+        UInt32 rd = instruction.rd();
+
+        Int32 val = (Int32)getReg(rt) >> (Int32)i;
+
+        setReg(rd, (UInt32)val);
+    }
+
+    private void op_subu(Instruction instruction) {
+        UInt32 rd = instruction.rd();
+        UInt32 rs = instruction.rs();
+        UInt32 rt = instruction.rt();
+
+        UInt32 val = getReg(rs) - getReg(rt);
+
+        setReg(rd, val);
+    }
+    
+    private void op_bcondz(Instruction instruction) {
+        UInt32 i = instruction.imm_se();
+        UInt32 rs = instruction.rs();
+
+        bool bgez = ((instruction.opcode >> 16) & 1) == 1;
+        bool link = ((instruction.opcode >> 20) & 1) == 1;
+
+        Int32 val = (Int32)getReg(rs);
+
+        if ((val < 0 && !bgez) || (val >= 0 && bgez)) {
+            if (link) {
+                setReg(31, pc);
+            }
+
+            branch(i);
+        }
+    }
+
+    private void op_slti(Instruction instruction) {
+        Int32 i = (Int32)instruction.imm_se();
+        UInt32 rt = instruction.rt();
+        UInt32 rs = instruction.rs();
+
+        UInt32 val = 0;
+
+        if ((Int32)getReg(rs) < i) {
+            val = 1;
+        } 
+
+        setReg(rt, val);
+    }
+
+    private void op_jalr(Instruction instruction) {
+        UInt32 rd = instruction.rd();
+        UInt32 rs = instruction.rs();
+
+        UInt32 ra = pc;
+
+        setReg(rd, ra);
+
+        pc = getReg(rs);
+    }
+
+    private void op_blez(Instruction instruction) {
+        UInt32 i = instruction.imm_se();
+        UInt32 rs = instruction.rs();
+
+        if (getReg(rs) <= 0) {
+            branch(i);
+        }
+    }
+
+    private void op_bgtz(Instruction instruction) {
+        UInt32 i = instruction.imm_se();
+        UInt32 rs = instruction.rs();
+
+        if (getReg(rs) > 0) {
+            branch(i);
+        }
+    }
+
+    private void op_and(Instruction instruction) {
+        UInt32 rd = instruction.rd();
+        UInt32 rs = instruction.rs();
+        UInt32 rt = instruction.rt();
+
+        UInt32 val = getReg(rs) & getReg(rt);
+
+        setReg(rd, val);
+    }
+
     private void op_beq(Instruction instruction) {
         UInt32 i = instruction.imm_se();
         UInt32 rs = instruction.rs();
@@ -187,6 +300,16 @@ public class CPU {
         Console.WriteLine(rs);
         Console.WriteLine($"jr setting pc to: {getReg(rs):X}");
         pc = getReg(rs);
+    }
+
+    private void op_add(Instruction instruction) {
+        UInt32 rd = instruction.rd();
+        UInt32 rs = instruction.rs();
+        UInt32 rt = instruction.rt();
+
+        UInt32 val = checked(getReg(rs) + getReg(rt));
+
+        setReg(rd, val);
     }
 
     private void op_addu(Instruction instruction) {
@@ -229,6 +352,18 @@ public class CPU {
     }
 
     private void op_lb(Instruction instruction) {
+        UInt32 i = instruction.imm_se();
+        UInt32 rt = instruction.rt();
+        UInt32 rs = instruction.rs();
+
+        UInt32 addr = getReg(rs) + i;
+
+        UInt32 val = (UInt32)(Int32)load8(addr);
+
+        load = new NextLoad(rt, val);
+    }
+
+    private void op_lbu(Instruction instruction) {
         UInt32 i = instruction.imm_se();
         UInt32 rt = instruction.rt();
         UInt32 rs = instruction.rs();
@@ -401,6 +536,22 @@ public class CPU {
             default:
                 throw new Exception($"Unhandled COP0 Register: {copReg}");
         }
+    }
+
+    private void op_mfc0(Instruction instruction) {
+        UInt32 cpuReg = instruction.rt();
+        UInt32 copReg = instruction.rd();
+
+        UInt32 val = 0;
+
+        switch (copReg) {
+            case 12:
+                val = sr; break;
+            default:
+                throw new Exception($"Unhandled read from COP0 Register: {copReg}");
+        }
+
+        load = new NextLoad(cpuReg, val);
     }
 }
 

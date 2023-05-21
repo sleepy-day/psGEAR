@@ -8,6 +8,7 @@ public class Hub {
     readonly UInt32[] SPU = new UInt32[]{ 0x1F801C00, 640 };
     readonly UInt32[] EXPANSION_2 = new UInt32[]{ 0x1F802000, 66 };
     readonly UInt32[] EXPANSION_1 = new UInt32[]{ 0x1F000000, 8 * 1024 * 1024 };
+    readonly UInt32[] IRQ_CONTROL = new UInt32[]{ 0x1F801070, 8 };
     readonly UInt32[] REGION_MASK = new UInt32[]{
         // KUSEG: 2048MB
         0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
@@ -90,6 +91,7 @@ public class Hub {
         c = contains(addr, RAM);
         if (c.result) {
             ram.store8(c.offset, val);
+            return;
         }
 
         throw new Exception($"Unhandled store8 into address {addr:X}");
@@ -168,6 +170,12 @@ public class Hub {
         if (c.result) {
             // Cache control
             Console.WriteLine("Cache control configuration");
+            return;
+        }
+
+        c = contains(addr, IRQ_CONTROL);
+        if (c.result) {
+            Console.WriteLine($"IRQ Control write: {c.offset:X} {val}");
             return;
         }
 
