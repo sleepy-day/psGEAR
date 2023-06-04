@@ -9,6 +9,7 @@ public class Hub {
     readonly UInt32[] EXPANSION_2 = new UInt32[]{ 0x1F802000, 66 };
     readonly UInt32[] EXPANSION_1 = new UInt32[]{ 0x1F000000, 8 * 1024 * 1024 };
     readonly UInt32[] IRQ_CONTROL = new UInt32[]{ 0x1F801070, 8 };
+    readonly UInt32[] TIMERS = new UInt32[]{ 0x1F801100, 63 };
     readonly UInt32[] REGION_MASK = new UInt32[]{
         // KUSEG: 2048MB
         0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
@@ -23,9 +24,12 @@ public class Hub {
     Bios bios;
     Ram ram;
 
+    public log log;
+
     public Hub() {
         this.bios = new Bios();
-        this.ram = new Ram();
+        this.ram = new Ram();  
+        this.log = new log();
     }
 
     public UInt32 maskRegion(UInt32 addr) {
@@ -39,7 +43,7 @@ public class Hub {
         UInt32 start = region[0];
         UInt32 length = region[1];
 
-        if (addr >= start && addr < start + length) {
+        if ((addr >= start) && (addr < start + length)) {
             addr -= start;
             return (addr, true);
         }
@@ -48,6 +52,7 @@ public class Hub {
     }
 
     public byte load8(UInt32 addr) {
+
         var c = contains(addr, BIOS);
         if (c.result) {
             return bios.load8(c.offset);
@@ -68,14 +73,27 @@ public class Hub {
     }
 
     public UInt32 load32(UInt32 addr) {
+        if (addr % 4 != 0) {
+            throw new Exception($"unaligned load32 address: {addr:X}");
+        }
+
         var c = contains(addr, BIOS);
         if (c.result) {
+            log.writeLog($"Loading from BIOS, offset: {c.offset:X}");
             return bios.load32(c.offset);
         }
 
         c = contains(addr, RAM);
         if (c.result) {
+            log.writeLog($"Loading from RAM, offset: {c.offset:X}");
             return ram.load32(c.offset);
+        }
+
+        c = contains(addr, IRQ_CONTROL);
+        if (c.result) {
+            log.writeLog($"Loading from IRQ, offset: {c.offset:X}");
+            Console.WriteLine("IRQ Control Read, returning 0");
+            return 0;
         }
 
         throw new Exception($"Unhandled load32 at address: {addr:X}");
@@ -105,6 +123,12 @@ public class Hub {
         var c = contains(addr, SPU);
         if (c.result) {
             Console.WriteLine("Write to SPU");
+            return;
+        }
+
+        c = contains(addr, TIMERS);
+        if (c.result) {
+            Console.WriteLine("Write to timers");
             return;
         }
 

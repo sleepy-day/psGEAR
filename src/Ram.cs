@@ -23,10 +23,10 @@ public class Ram {
     public void store8(UInt32 offset, byte val) => ram[offset] = val;
 
     public void store32(UInt32 offset, UInt32 val) {
-        byte b0 = (byte)(val & 0xFF);
-        byte b1 = (byte)((val >> 8) & 0xFF);
-        byte b2 = (byte)((val >> 16) & 0xFF);
-        byte b3 = (byte)((val >> 24) & 0xFF);
+        byte b0 = (byte)val;
+        byte b1 = (byte)(val >> 8);
+        byte b2 = (byte)(val >> 16);
+        byte b3 = (byte)(val >> 24);
 
         this.ram[offset + 0] = b0;
         this.ram[offset + 1] = b1;
