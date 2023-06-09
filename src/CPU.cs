@@ -114,6 +114,8 @@ public class CPU {
                         op_jr(instruction); break;
                     case 0x09:
                         op_jalr(instruction); break;
+                    case 0x0C:
+                        op_syscall(instruction); break;
                     case 0x10:
                         op_mfhi(instruction); break;
                     case 0x12:
@@ -230,8 +232,22 @@ public class CPU {
         nextPc = pc + (offset << 2);
     }
 
-    private void triggerException() {
+    private void triggerException(Except excep) {
+        UInt32 handlerAddr = 0x80000080;
 
+        if (((sr >> 22) & 0x1) == 1) 
+            handlerAddr = 0xbfc00180;
+
+        UInt32 mode = sr & 0x3f;
+        sr &= unchecked((UInt32)~0x3f);
+        sr |= (mode << 2) & 0x3f;
+
+        cause = (UInt32)excep << 2;
+
+        epc = pc;
+
+        pc = handlerAddr;
+        nextPc = pc + 4;
     }
 
     // opcodes
@@ -248,6 +264,10 @@ public class CPU {
         UInt32 val = getReg(rt) >> (int)shamt;
 
         setReg(rd, val);
+    }
+
+    private void op_syscall(Instruction instruction) {
+        triggerException(Except.SysCall);
     }
 
     private void op_mflo(Instruction instruction) {
