@@ -10,7 +10,10 @@ struct NextLoad {
 }
 
 enum Except : UInt32 {
-    SysCall = 0x8
+    LoadAddressError = 0x4,
+    StoreAddressError = 0x5,
+    SysCall = 0x8,
+    Overflow = 0xC,
 }
 
 public class CPU {
@@ -21,6 +24,9 @@ public class CPU {
     UInt32 pc;
     UInt32 nextPc;
     UInt32 currentPc;
+
+    bool branchTaken;
+    bool delaySlot;
 
     UInt32[] reg;
     UInt32[] outReg;
@@ -53,6 +59,9 @@ public class CPU {
 
         this.hi = 0xEE00EE00;
         this.lo = 0xEE00EE00;
+
+        this.branchTaken = false;
+        this.delaySlot = false;
     }
 
     public UInt32 getReg(UInt32 index) => reg[index];
@@ -73,6 +82,13 @@ public class CPU {
 
         pc = nextPc;
         nextPc += 4;
+
+        if (pc % 4 != 0) {
+            triggerException(Except.LoadAddressError);
+        }
+
+        delaySlot = branchTaken;
+        branchTaken = false;
 
         setReg(load.RegisterIndex, load.Value);
         load = new NextLoad(0, 0);
@@ -110,6 +126,12 @@ public class CPU {
                         op_srl(instruction); break;
                     case 0x03:
                         op_sra(instruction); break;
+                    case 0x04:
+                        op_sllv(instruction); break;
+                    case 0x06:
+                        op_srlv(instruction); break;
+                    case 0x07:
+                        op_srav(instruction); break;
                     case 0x08:
                         op_jr(instruction); break;
                     case 0x09:
@@ -118,8 +140,12 @@ public class CPU {
                         op_syscall(instruction); break;
                     case 0x10:
                         op_mfhi(instruction); break;
+                    case 0x11:
+                        op_mthi(instruction); break;
                     case 0x12:
                         op_mflo(instruction); break;
+                    case 0x13:
+                        op_mtlo(instruction); break;
                     case 0x1A:
                         op_div(instruction); break;
                     case 0x1B:
@@ -174,10 +200,16 @@ public class CPU {
                 decodeAndExecuteCOP0(instruction); break;
             case 0x20:
                 op_lb(instruction); break;
+            case 0x21:
+                op_lh(instruction); break;
             case 0x23:
                 op_lw(instruction); break;
             case 0x24:
                 op_lbu(instruction); break;
+            case 0x25:
+                op_lhu(instruction); break;
+            case 0x27:
+                op_nor(instruction); break;
             case 0x28:
                 op_sb(instruction); break;
             case 0x29:
@@ -198,6 +230,8 @@ public class CPU {
                 op_mfc0(instruction); break;
             case 0x04:
                 op_mtc0(instruction); break;
+            case 0x10:
+                op_rfe(instruction); break;
             default:
                 throw new Exception($"Unhandled COP0 instruction: {instruction.rs():X}");
         }
@@ -209,6 +243,10 @@ public class CPU {
 
     private byte load8(UInt32 addr) {
         return hub.load8(addr);
+    }
+
+    private UInt16 load16(UInt32 addr) {
+        return hub.load16(addr);
     }
 
     private UInt32 load32(UInt32 addr) {
@@ -230,6 +268,7 @@ public class CPU {
     private void branch(UInt32 offset) {
         hub.log.writeLog($"Branching to addr: {pc+offset:X} offset signed: {(Int32)offset} unsigned: {offset} hex: {offset:X}");
         nextPc = pc + (offset << 2);
+        branchTaken = true;
     }
 
     private void triggerException(Except excep) {
@@ -246,11 +285,86 @@ public class CPU {
 
         epc = pc;
 
+        if (delaySlot) {
+            epc -= 4;
+            cause |= (UInt32)1 << 31;
+        }
+
         pc = handlerAddr;
         nextPc = pc + 4;
     }
 
     // opcodes
+    private void op_multu(Instruction instruction) {
+        UInt32 rs = instruction.rs();
+        UInt32 rt = instruction.rt();
+
+        UInt64 val = (UInt64)getReg(rs) * (UInt64)getReg(rt);
+
+        hi = (UInt32)(val >> 32);
+        lo = (UInt32)(val & 0xFFFF);
+    }
+
+    private void op_srlv(Instruction instruction) {
+        UInt32 rd = instruction.rd();
+        UInt32 rs = instruction.rs();
+        UInt32 rt = instruction.rt();
+
+        UInt32 val = getReg(rt) >> (Int32)(getReg(rs) & 0x1F);
+
+        setReg(rd, val);
+    }
+
+    private void op_srav(Instruction instruction) {
+        UInt32 rd = instruction.rd();
+        UInt32 rs = instruction.rs();
+        UInt32 rt = instruction.rt();
+
+        UInt32 val = (UInt32)((Int32)getReg(rt) >> (Int32)(getReg(rs) & 0x1F));
+
+        setReg(rd, val);
+    }
+
+    private void op_nor(Instruction instruction) {
+        UInt32 rd = instruction.rd();
+        UInt32 rs = instruction.rs();
+        UInt32 rt = instruction.rt();
+
+        UInt32 val = ~(getReg(rs) | getReg(rt));
+
+        setReg(rd, val);
+    }
+
+    private void op_sllv(Instruction instruction) {
+        UInt32 rd = instruction.rd();
+        UInt32 rs = instruction.rs();
+        UInt32 rt = instruction.rt();
+
+        UInt32 val = getReg(rt) << (int)(getReg(rs) & 0x1F);
+
+        setReg(rd, val);
+    }
+
+    private void op_rfe(Instruction instruction) {
+        if ((instruction.opcode & 0x3F) != 0x10) {
+            throw new Exception($"Invalid rfe instruction: {instruction.opcode:X}" );
+        }
+
+        UInt32 mode = sr & 0x3F;
+        sr &= unchecked((UInt32)~0x3F);
+        sr |= mode >> 2;
+    }
+
+    private void op_mthi(Instruction instruction) {
+        UInt32 rs = instruction.rs();
+        hi = getReg(rs);
+    }
+
+    private void op_mtlo(Instruction instruction) {
+        UInt32 rs = instruction.rs();
+        lo = getReg(rs);
+    }
+
     private void op_mfhi(Instruction instruction) {
         UInt32 rd = instruction.rd();
         setReg(rd, hi);
@@ -393,6 +507,7 @@ public class CPU {
         setReg(rd, ra);
 
         nextPc = getReg(rs);
+        branchTaken = true;
 
         hub.log.writeLog($"jalr rs {rs}: {getReg(rs):X}");
         hub.log.writeLog($"pc set to {pc:X}");
@@ -444,18 +559,14 @@ public class CPU {
 
     private void op_jal(Instruction instruction) {
         UInt32 ra = nextPc;
-        Console.WriteLine($"jal PC: {nextPc:X}");
         setReg(31, ra);
-        Console.WriteLine($"reg 31: {getReg(31):X}");
         op_j(instruction);
     }
 
     private void op_jr(Instruction instruction) {
         UInt32 rs = instruction.rs();
-        Console.WriteLine(rs);
-        Console.WriteLine($"jr setting pc to: {getReg(rs):X}");
         nextPc = getReg(rs);
-        hub.log.writeLog($"pc set to {pc:X}");
+        branchTaken = true;
     }
 
     private void op_add(Instruction instruction) {
@@ -466,8 +577,7 @@ public class CPU {
         UInt32 val = getReg(rs) + getReg(rt);
 
         if (checkOverflow(getReg(rs), getReg(rt), val)) {
-            hub.log.writeLog("add overflow");
-            return;
+            triggerException(Except.Overflow);
         }
 
         setReg(rd, val);
@@ -533,6 +643,40 @@ public class CPU {
         load = new NextLoad(rt, val);
     }
 
+    private void op_lh(Instruction instruction) {
+        UInt32 i = instruction.imm_se();
+        UInt32 rt = instruction.rt();
+        UInt32 rs = instruction.rs();
+
+        UInt32 addr = getReg(rs) + i;
+
+        if (addr % 2 != 0) {
+            triggerException(Except.LoadAddressError);
+            return;
+        }
+
+        UInt32 val = (UInt32)(Int16)load16(addr);
+
+        load = new NextLoad(rt, val);
+    }
+
+    private void op_lhu(Instruction instruction) {
+        UInt32 i = instruction.imm_se();
+        UInt32 rt = instruction.rt();
+        UInt32 rs = instruction.rs();
+
+        UInt32 addr = getReg(rs) + i;
+
+        if (addr % 2 != 0) {
+            triggerException(Except.LoadAddressError);
+            return;
+        }
+
+        UInt32 val = load16(addr);
+
+        load = new NextLoad(rt, val);
+    }
+
     private void op_lbu(Instruction instruction) {
         if ((sr & 0x10000) != 0) {
             hub.log.writeLog("Ignoring lbu, cache is isolated");
@@ -586,6 +730,11 @@ public class CPU {
         UInt32 addr = getReg(rs) + i;
         UInt32 val = getReg(rt);
 
+        if (addr % 4 != 0) {
+            triggerException(Except.StoreAddressError);
+            return;
+        }
+
         store32(addr, val);
     }
 
@@ -609,7 +758,7 @@ public class CPU {
         UInt32 val = getReg(rs) + i;
 
         if (checkOverflow(getReg(rs), i, val)) {
-            throw new Exception("addi overflow");
+            triggerException(Except.Overflow);
         }
 
         setReg(rt, val);
@@ -632,6 +781,7 @@ public class CPU {
         pcTemp = (pcTemp & 0xF0000000) | (addr << 2);
 
         nextPc = pcTemp;
+        branchTaken = true;
     }
 
     private void op_or(Instruction instruction) {
@@ -668,8 +818,12 @@ public class CPU {
 
         UInt32 addr = getReg(rs) + i;
 
-        UInt32 val = load32(addr);
+        if (addr % 4 != 0) {
+            triggerException(Except.LoadAddressError);
+            return;
+        }
 
+        UInt32 val = load32(addr);
         load = new NextLoad(rt, val);
     }
 
@@ -711,6 +865,11 @@ public class CPU {
 
         UInt32 addr = getReg(rs) + i;
         UInt16 val = (UInt16)(getReg(rt) & 0xFFFF);
+
+        if (addr % 2 != 0) {
+            triggerException(Except.StoreAddressError);
+            return;
+        }
 
         store16(addr, val);
     }

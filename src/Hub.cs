@@ -10,6 +10,7 @@ public class Hub {
     readonly UInt32[] EXPANSION_1 = new UInt32[]{ 0x1F000000, 8 * 1024 * 1024 };
     readonly UInt32[] IRQ_CONTROL = new UInt32[]{ 0x1F801070, 8 };
     readonly UInt32[] TIMERS = new UInt32[]{ 0x1F801100, 63 };
+    readonly UInt32[] DMA = new UInt32[]{ 0x1F801080, 0x80 };
     readonly UInt32[] REGION_MASK = new UInt32[]{
         // KUSEG: 2048MB
         0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
@@ -72,6 +73,21 @@ public class Hub {
         throw new Exception($"Unhandled load8 at address: {addr:X}");
     }
 
+    public UInt16 load16(UInt32 addr) {
+        var c = contains(addr, SPU);
+        if (c.result) {
+            Console.WriteLine($"SPU load addr: {addr:X}");
+            return 0;
+        }
+
+        c = contains(addr, RAM);
+        if (c.result) {
+            return ram.load16(addr);
+        }
+
+        throw new Exception($"Unhandled load 16 at address: {addr:X}");
+    }
+
     public UInt32 load32(UInt32 addr) {
         if (addr % 4 != 0) {
             throw new Exception($"unaligned load32 address: {addr:X}");
@@ -94,6 +110,11 @@ public class Hub {
             log.writeLog($"Loading from IRQ, offset: {c.offset:X}");
             Console.WriteLine("IRQ Control Read, returning 0");
             return 0;
+        }
+
+        c = contains(addr, DMA);
+        if (c.result) {
+            Console.WriteLine($"DMA read {addr:X}");
         }
 
         throw new Exception($"Unhandled load32 at address: {addr:X}");
@@ -123,6 +144,12 @@ public class Hub {
         var c = contains(addr, SPU);
         if (c.result) {
             Console.WriteLine("Write to SPU");
+            return;
+        }
+
+        c = contains(addr, RAM);
+        if (c.result) {
+            ram.store16(c.offset, val);
             return;
         }
 
@@ -200,6 +227,12 @@ public class Hub {
         c = contains(addr, IRQ_CONTROL);
         if (c.result) {
             Console.WriteLine($"IRQ Control write: {c.offset:X} {val}");
+            return;
+        }
+
+        c = contains(addr, DMA);
+        if (c.result) {
+            Console.WriteLine($"DMA write to {addr:X} val {val:X}");
             return;
         }
 
