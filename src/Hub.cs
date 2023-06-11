@@ -11,6 +11,7 @@ public class Hub {
     readonly UInt32[] IRQ_CONTROL = new UInt32[]{ 0x1F801070, 8 };
     readonly UInt32[] TIMERS = new UInt32[]{ 0x1F801100, 63 };
     readonly UInt32[] DMA = new UInt32[]{ 0x1F801080, 0x80 };
+    readonly UInt32[] GPU = new UInt32[]{ 0x1F801810, 4};
     readonly UInt32[] REGION_MASK = new UInt32[]{
         // KUSEG: 2048MB
         0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
@@ -83,6 +84,12 @@ public class Hub {
         c = contains(addr, RAM);
         if (c.result) {
             return ram.load16(addr);
+        }
+
+        c = contains(addr, IRQ_CONTROL);
+        if (c.result) {
+            Console.WriteLine($"IRQ Control load16: {addr:X}");
+            return 0;
         }
 
         throw new Exception($"Unhandled load 16 at address: {addr:X}");
@@ -233,6 +240,18 @@ public class Hub {
         c = contains(addr, DMA);
         if (c.result) {
             Console.WriteLine($"DMA write to {addr:X} val {val:X}");
+            return;
+        }
+
+        c = contains(addr, GPU);
+        if (c.result) {
+            Console.WriteLine($"GPU write to {addr:X} val {val:X}");
+            return;
+        }
+
+        c = contains(addr, TIMERS);
+        if (c.result) {
+            Console.WriteLine($"TIMER write to: {addr:X} val {val:X}");
             return;
         }
 
